@@ -14,6 +14,8 @@ import {
   IonRouterLink,
   IonSpinner,
   IonModal,
+  IonInfiniteScroll,
+  IonInfiniteScrollContent,
 } from "@ionic/react";
 import React, { useState, useEffect } from "react";
 import { get, map, truncate, toSafeInteger } from "lodash-es";
@@ -30,9 +32,6 @@ function stripTags(html: string): string {
 function getTimeAgo(timestamp: number): string {
   return ago(new Date(toSafeInteger(timestamp) * 1000));
 }
-
-const url =
-  "https://api.stackexchange.com/2.2/questions?order=desc&sort=hot&site=stackoverflow&filter=withbody";
 
 function UserAvatar({ user }: any) {
   return (
@@ -67,20 +66,36 @@ function Tags({ tags }: any) {
   );
 }
 
+function fetchQuestions({ page }: any) {
+  const url = `https://api.stackexchange.com/2.2/questions?order=desc&sort=hot&site=stackoverflow&filter=withbody&page=${page}`;
+
+  return axios.get(url).then((res) => res.data);
+}
+
 const Home: React.FC = () => {
   const [questions, setQuestions] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [currentPage, setCurrentPage] = useState<number>(0);
   const [detailedQuestion, setDetailedQuestion] = useState(null);
+
+  const handleAfterQuestionsLoad = (result: Promise<any>): Promise<any> => {
+    return Promise.resolve(result)
+      .then((data) => setQuestions((q) => q.concat(get(data, "items", []))))
+      .then(() => setCurrentPage((p) => p + 1))
+      .catch((err) => console.error(err));
+  };
+
+  const loadQuestions = (e: CustomEvent<void>): Promise<any> =>
+    fetchQuestions({ page: currentPage + 1 })
+      .then(handleAfterQuestionsLoad)
+      .finally(() => (e.target as HTMLIonInfiniteScrollElement).complete());
 
   useEffect(() => {
     setLoading(true);
-    axios
-      .get(url)
-      .then((res) => res.data)
-      .then((data) => setQuestions((q) => q.concat(get(data, "items", []))))
-      .catch((err) => console.error(err))
+    fetchQuestions({ page: 1 })
+      .then(handleAfterQuestionsLoad)
       .finally(() => setLoading(false));
-  }, [setLoading]);
+  }, []);
 
   return (
     <IonPage>
@@ -128,6 +143,14 @@ const Home: React.FC = () => {
             </IonCardContent>
           </IonCard>
         ))}
+
+        <IonInfiniteScroll
+          threshold="100px"
+          disabled={false}
+          onIonInfinite={loadQuestions}
+        >
+          <IonInfiniteScrollContent loadingText="Loading more questions..."></IonInfiniteScrollContent>
+        </IonInfiniteScroll>
 
         {loading && (
           <div
